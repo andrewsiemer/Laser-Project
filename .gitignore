@@ -1,0 +1,8 @@
+# Ignore Apple hidden files
+.DS_Store
+._*
+*.asmproj
+*.componentinfo.xml
+
+# Ignore build files
+Debug/
