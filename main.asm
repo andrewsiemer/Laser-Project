@@ -1,24 +1,24 @@
 ; LaserProject.asm
 ; @description A project for Computer Systems
 ; @author Andrew Siemer
-; @version 1.21.20
-
-.org 0x200
-data1:.DB 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R'
-; .org 0x300
-; data2:.DB 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
+; @version 2.4.20
 
 .org 0x00		; Write next command at 0x00 (Reset)
 jmp START		; Wakeup/reset
 .org 0x02		; Write next command at 0x02 (INT0)
 jmp INT0ROUTINE	; Call interrupt service routine for INT0
 
+.org 0x300
+data1:.DB 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
+
 INT0ROUTINE:
 	CLI
-	CALL	CLEAR_SCREEN 
+	CALL	DELAY_2ms
+	CALL	DELAY_2ms
+	CALL	DELAY_2ms
+	CALL	DELAY_2ms
 	CALL	LOAD_KEYPAD
-	CALL	LOADZREGISTER1 
-	CALL	DELAY_2ms 
+	CALL	LOADZREGISTER1
 	CALL	DATAWRT
 	SEI
 RETI
@@ -42,9 +42,18 @@ RET
 LOAD_KEYPAD:
 	LDI		R16,0x00
 	OUT		KPD_DDR,R16
-	CALL	DELAY_2MS
+	CALL	DELAY_2ms
+	CALL	DELAY_2ms
+	CALL	DELAY_2ms
+	CALL	DELAY_2ms
+	CALL	DELAY_2ms
+	CALL	DELAY_2ms
+	CALL	DELAY_2ms
+	CALL	DELAY_2ms
+	CALL	DELAY_2ms
+	CALL	DELAY_2ms
 	IN		R16,KPD_PIN
-	CALL	DELAY_2MS
+	ANDI	R16, 0x1F
 RET
 
 START:
@@ -65,8 +74,8 @@ INTERRUPT_CONFIG:
 	OUT		DDRD,R31	; Set ddrd to 00000000 (all pins of portd are input pins, note you only need pins 2 and 3 for the interrupts)
 	LDI		R31,0x0C	; Preload binary 00001100 into r31
 	OUT		PORTD,R31	; Set portd to 00001100 (portd pins 2 and 3 are internally hooked to pull up resistors)
-	SEI		; Set enable interrupts
-	
+SEI		; Set enable interrupts
+
 KEYPAD_CONFIG:
 	.EQU	KPD_PRT = PORTC
 	.EQU	KPD_DDR = DDRC
