@@ -6,13 +6,14 @@
 ;---------------------------------------------------------
 ; Registers:
 ; R16 - LCD buffer
-; R17 - placeholder
+; R17 - general use
 ; R18 - shift flag
+; R19 - general use
 ;---------------------------------------------------------
 
-.org 0x00		; Write next command at 0x00 (Reset)
-jmp START		; Wakeup/reset
-.org 0x02		; Write next command at 0x02 (INT0)
+.org 0x00	; Write next command at 0x00 (Reset)
+jmp START	; Wakeup/reset
+.org 0x02	; Write next command at 0x02 (INT0)
 jmp INT0ROUTINE	; Call interrupt service routine for INT0
 
 .org 0x300	; go to 0x300 in program memory
@@ -32,7 +33,9 @@ INT0ROUTINE:
 	CPSE	R16, R17		; check if button press was not a character
 	CALL	LOADZREGISTER1	; load Z Register with database value
 	CPSE	R16, R17		; check if button press was not a character
-	CALL	DATAWRT			; Write diplay buffer to LCD
+	CALL	LOAD_BUFFER		; load LCD character buffer
+	CPSE	R16, R17		; check if button press was not a character
+	CALL	UPDATE_LCD		; write diplay buffer to LCD
 	SEI						; set enable interrupts
 RJMP MAIN
 
@@ -41,15 +44,6 @@ RJMP MAIN
 ;---------------------------------------------------------
 MAIN:
 	JMP		MAIN	; stay here
-
-;---------------------------------------------------------
-; CLEAR_SCREEN : Clear LCD Screen
-;---------------------------------------------------------
-CLEAR_SCREEN:
-	LDI		R16, 0x01	; LCD clear command
-	CALL	CMnDWRT		; LCD command write
-	CALL	DELAY_2ms
-RET
 
 ;---------------------------------------------------------
 ; LOADZREGISTER1 : Load Z register with database values
@@ -94,10 +88,50 @@ LOAD_KEYPAD:
 RET
 
 ;---------------------------------------------------------
+; LOAD_BUFFER : Load new keypad value into buffer
+;---------------------------------------------------------
+LOAD_BUFFER:
+	/*MOV		R31, R30
+	MOV		R30, R29
+	MOV		R29, R28
+	MOV		R28, R16*/
+	LDS		R17, LCD_BUF3	; load buffer value into R17
+	STS		LCD_BUF4, R17	; write R17 value to buffer memory
+	LDS		R17, LCD_BUF2	; load buffer value into R17
+	STS		LCD_BUF3, R17	; write R17 value to buffer memory
+	LDS		R17, LCD_BUF1	; load buffer value into R17
+	STS		LCD_BUF2, R17	; write R17 value to buffer memory
+	STS		LCD_BUF1, R16	; write R17 value to buffer memory
+RET
+
+;---------------------------------------------------------
+; UPDATE_LCD : Updates LCD with new char buffer
+;---------------------------------------------------------
+UPDATE_LCD:
+	CALL	CLEAR_LCD	
+	/*MOV		R16, R31
+	CALL	DATAWRT
+	MOV		R16, R30
+	CALL	DATAWRT
+	MOV		R16, R29
+	CALL	DATAWRT
+	MOV		R16, R28
+	CALL	DATAWRT*/
+	LDS		R16, LCD_BUF4	; load buffer value into R16
+	CALL	DATAWRT			; write R16 to LCD
+	LDS		R16, LCD_BUF3	; load buffer value into R16
+	CALL	DATAWRT			; write R16 to LCD
+	LDS		R16, LCD_BUF2	; load buffer value into R16
+	CALL	DATAWRT			; write R16 to LCD
+	LDS		R16, LCD_BUF1	; load buffer value into R16
+	CALL	DATAWRT			; write R16 to LCD
+RET
+
+;---------------------------------------------------------
 ; SHIFT : Toggle uppercase/lowercase
 ;---------------------------------------------------------
 Shift:
-	CPI		R18, 1
+	CPI		R18, 1		; compare shift flag
 	BREQ	LOWERCASE	; if uppercase call lowercase
 	BRNE	UPPERCASE	; if lowercase call uppercase
 RET
@@ -138,15 +172,15 @@ STACK_CONFIG:
 ; INTERRUPT_CONFIG : Establishes interrupt variables
 ;---------------------------------------------------------
 INTERRUPT_CONFIG:
-	LDI		R31, 0x0A	; preload binary 00001010 into r31
+	LDI		R19, 0x0A	; preload binary 00001010 into R19
 	LDI		R17, 0x00
-	STS		EICRA, R31	; set eicra to 00001010 (both interrupts trigger on active low)
-	LDI		R31, 0x03	; preload binary 00000011 into r31
-	OUT		EIMSK, R31	; set eimsk to 00000011 (enable both interrupts)
-	LDI		R31, 0x00	; preload binary 00000000 into r31
-	OUT		DDRD, R31	; set ddrd to 00000000 (all pins of portd are input pins, note you only need pins 2 and 3 for the interrupts)
-	LDI		R31, 0x0C	; preload binary 00001100 into r31
-	OUT		PORTD, R31	; set portd to 00001100 (portd pins 2 and 3 are internally hooked to pull up resistors)
+	STS		EICRA, R19	; set eicra to 00001010 (both interrupts trigger on active low)
+	LDI		R19, 0x03	; preload binary 00000011 into R19
+	OUT		EIMSK, R19	; set eimsk to 00000011 (enable both interrupts)
+	LDI		R19, 0x00	; preload binary 00000000 into R19
+	OUT		DDRD, R19	; set ddrd to 00000000 (all pins of portd are input pins, note you only need pins 2 and 3 for the interrupts)
+	LDI		R19, 0x0C	; preload binary 00001100 into R19
+	OUT		PORTD, R19	; set portd to 00001100 (portd pins 2 and 3 are internally hooked to pull up resistors)
 SEI						; set enable interrupts
 
 ;---------------------------------------------------------
@@ -170,6 +204,10 @@ LCD_CONFIG:
 	.EQU	LCD_RS = 0		; LCD RS
 	.EQU	LCD_RW = 1		; LCD RW
 	.EQU	LCD_EN = 2		; LCD EN
+	.EQU	LCD_BUF1 = 0x200	; LCD char buffer 1
+	.EQU	LCD_BUF2 = 0x208	; LCD char buffer 1
+	.EQU	LCD_BUF3 = 0x216	; LCD char buffer 1
+	.EQU	LCD_BUF4 = 0x224	; LCD char buffer 1
 
 ;---------------------------------------------------------
 ; LCD_INIT : Initializes the LCD periphrials
@@ -195,11 +233,28 @@ LCD_INIT:
 	CALL	DELAY_2ms		; delay 2 ms for clear LCD
 	LDI		R16, 0x06		; shift cursor right
 	CALL	CMNDWRT			; call command function
-
-	LDI R18, 0				; set current state of shift to lower
+	LDI		R18, 0			; set current state of shift to lower
+	/*LDI		R28, ' '
+	LDI		R29, ' '
+	LDI		R30, ' '
+	LDI		R31, ' '*/
+	LDI		R17, ' '
+	STS		LCD_BUF1, R17	; init. buffer with spaces
+	STS		LCD_BUF2, R17	; init. buffer with spaces
+	STS		LCD_BUF3, R17	; init. buffer with spaces
+	STS		LCD_BUF4, R17	; init. buffer with spaces
 
 JMP MAIN	; setup complete wait for interrupt
 ;---------------------------------------------------------
+
+;---------------------------------------------------------
+; CLEAR_LCD : Clear LCD Screen
+;---------------------------------------------------------
+CLEAR_LCD:
+	LDI		R16, 0x01	; LCD clear command
+	CALL	CMnDWRT		; LCD command write
+	CALL	DELAY_2ms
+RET
 
 ;---------------------------------------------------------
 ; CMnDWRT : Write data in R16 to LCD as command
@@ -284,7 +339,7 @@ DR0:	CALL	SDELAY
 RET
 
 ;---------------------------------------------------------
-; DELAY_2ms : 100 millisecond delay
+; DELAY_2ms : 2 millisecond delay
 ;---------------------------------------------------------
 DELAY_2ms:
 		PUSH	R17
