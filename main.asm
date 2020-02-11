@@ -1,42 +1,52 @@
-; LaserProject.asm
-; @description A project for Computer Systems
-; @author Andrew Siemer
-; @version 2.4.20
+;---------------------------------------------------------
+; LASERPROJECT.ASM
+; DESCRIPTION : A project for Computer Systems
+; AUTHOR : Andrew Siemer
+; VERSION : 2.11.20
+;---------------------------------------------------------
+; Registers:
+; R16 - LCD buffer
+; R17 - placeholder
+; R18 - shift flag
+;---------------------------------------------------------
 
 .org 0x00		; Write next command at 0x00 (Reset)
 jmp START		; Wakeup/reset
 .org 0x02		; Write next command at 0x02 (INT0)
 jmp INT0ROUTINE	; Call interrupt service routine for INT0
 
-.org 0x300	;	go to 0x300 in program memory
+.org 0x300	; go to 0x300 in program memory
 data1:.DB 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
 
 ;---------------------------------------------------------
 ; INT0ROUTINE : Action on button press
 ;---------------------------------------------------------
 INT0ROUTINE:
-	CLI						; Clear interrupt
+	CLI						; clear interrupt
 	CALL	DELAY_2ms
 	CALL	DELAY_2ms
 	CALL	DELAY_2ms
 	CALL	DELAY_2ms		
-	CALL	LOAD_KEYPAD		; Load in keypad buffer
-	CALL	LOADZREGISTER1	; Load Z Register with database value
+	CALL	LOAD_KEYPAD		; load in keypad buffer
+	LDI		R17, 0xFF
+	CPSE	R16, R17		; check if button press was not a character
+	CALL	LOADZREGISTER1	; load Z Register with database value
+	CPSE	R16, R17		; check if button press was not a character
 	CALL	DATAWRT			; Write diplay buffer to LCD
-	SEI						; Set enable interrupts
-RETI	;RJMP MAIN
+	SEI						; set enable interrupts
+RJMP MAIN
 
 ;---------------------------------------------------------
 ; MAIN : Wait in loop when idle
 ;---------------------------------------------------------
 MAIN:
-	JMP		MAIN	;stay here
+	JMP		MAIN	; stay here
 
 ;---------------------------------------------------------
 ; CLEAR_SCREEN : Clear LCD Screen
 ;---------------------------------------------------------
 CLEAR_SCREEN:
-	LDI		R16,0x01	; LCD clear command
+	LDI		R16, 0x01	; LCD clear command
 	CALL	CMnDWRT		; LCD command write
 	CALL	DELAY_2ms
 RET
@@ -47,6 +57,10 @@ RET
 LOADZREGISTER1:
 	LDI		ZL,	LOW(2*data1)
 	LDI		ZH,	HIGH(2*data1)
+	LDI		R21, 0
+	LDI		R22, 18
+	CPSE	R18, R21
+	ADD		R16, R22
 	ADD		ZL, R16
 	LPM		R16, Z
 RET
@@ -67,55 +81,92 @@ LOAD_KEYPAD:
 	CALL	DELAY_2ms
 	CALL	DELAY_2ms
 	CALL	DELAY_2ms
+	CALL	DELAY_2ms
+	CALL	DELAY_2ms
+	CALL	DELAY_2ms
+	CALL	DELAY_2ms
+	CALL	DELAY_2ms
+	CALL	DELAY_2ms
 	IN		R16, KPD_PIN	; read in buffer from keypad
 	ANDI	R16, 0x1F		; keypad buffer mask
+	CPI		R16, 0x12		; look for shift key
+	BREQ	Shift
+RET
+
+;---------------------------------------------------------
+; SHIFT : Toggle uppercase/lowercase
+;---------------------------------------------------------
+Shift:
+	CPI		R18, 1
+	BREQ	LOWERCASE	; if uppercase call lowercase
+	BRNE	UPPERCASE	; if lowercase call uppercase
+RET
+
+;---------------------------------------------------------
+; LOWERCASE : Toggle on lowercase
+;---------------------------------------------------------
+LOWERCASE:
+	LDI		R16, 0x0E	; set LCD cursor to not blinking
+	CALL	CMNDWRT		; write command to LCD
+	LDI		R18, 0		; set shift flag = 0
+	LDI		R16, 0xFF	; fill R16 with 1 for LCD ignore
+RET
+
+;---------------------------------------------------------
+; LOWERCASE : Toggle on uppercase
+;---------------------------------------------------------
+UPPERCASE:
+	LDI		R16, 0x0F	; set LCD cursor to blinking
+	CALL	CMNDWRT		; write command to LCD
+	LDI		R18, 1		; set shift flag = 1
+	LDI		R16, 0xFF	; fill R16 with 1 for LCD ignore
 RET
 
 ;---------------------------------------------------------
 START:	; start of program
 
 ;---------------------------------------------------------
-; STACK_CONFIG : Establishes STACK variables
+; STACK_CONFIG : Establishes stack variables
 ;---------------------------------------------------------
 STACK_CONFIG:
-	LDI		R21, HIGH(RAMEND)
-	OUT		SPH, R21			;set up stack
+	LDI		R17, HIGH(RAMEND)
+	OUT		SPH, R17			; set up stack
 	LDI		R21, LOW(RAMEND)
-	OUT		SPL, R21
+	OUT		SPL, R17
 
 ;---------------------------------------------------------
-; INTERRUPT_CONFIG : Establishes INTERRUPT variables
+; INTERRUPT_CONFIG : Establishes interrupt variables
 ;---------------------------------------------------------
 INTERRUPT_CONFIG:
-	LDI		R31, 0x0A	; Preload binary 00001010 into r31
+	LDI		R31, 0x0A	; preload binary 00001010 into r31
 	LDI		R17, 0x00
-	STS		EICRA, R31	; Set eicra to 00001010 (both interrupts trigger on active low)
-	LDI		R31, 0x03	; Preload binary 00000011 into r31
-	OUT		EIMSK, R31	; Set eimsk to 00000011 (enable both interrupts)
-	LDI		R31, 0x00	; Preload binary 00000000 into r31
-	OUT		DDRD, R31	; Set ddrd to 00000000 (all pins of portd are input pins, note you only need pins 2 and 3 for the interrupts)
-	LDI		R31, 0x0C	; Preload binary 00001100 into r31
-	OUT		PORTD, R31	; Set portd to 00001100 (portd pins 2 and 3 are internally hooked to pull up resistors)
-SEI						; Set enable interrupts
+	STS		EICRA, R31	; set eicra to 00001010 (both interrupts trigger on active low)
+	LDI		R31, 0x03	; preload binary 00000011 into r31
+	OUT		EIMSK, R31	; set eimsk to 00000011 (enable both interrupts)
+	LDI		R31, 0x00	; preload binary 00000000 into r31
+	OUT		DDRD, R31	; set ddrd to 00000000 (all pins of portd are input pins, note you only need pins 2 and 3 for the interrupts)
+	LDI		R31, 0x0C	; preload binary 00001100 into r31
+	OUT		PORTD, R31	; set portd to 00001100 (portd pins 2 and 3 are internally hooked to pull up resistors)
+SEI						; set enable interrupts
 
 ;---------------------------------------------------------
-; KEYPAD_CONFIG : Establishes KEYPAD variables
+; KEYPAD_CONFIG : Establishes keypad variables
 ;---------------------------------------------------------
 KEYPAD_CONFIG:
-	.EQU	KPD_PRT = PORTC
-	.EQU	KPD_DDR = DDRC
-	.EQU	KPD_PIN = PINC
-	LDI		R16, 0x00
-	OUT		KPD_DDR, R16
-	OUT		KPD_PRT, R16
+	.EQU	KPD_PRT = PORTC	; keypad data port
+	.EQU	KPD_DDR = DDRC	; keypad ddr
+	.EQU	KPD_PIN = PINC	; keypad data pin
+	LDI		R17, 0x00
+	OUT		KPD_DDR, R17
+	OUT		KPD_PRT, R17
 
 ;---------------------------------------------------------
 ; LCD_CONFIG : Establishes LCD variables
 ;---------------------------------------------------------
 LCD_CONFIG:
-	.EQU	LCD_PRT = PORTB	; LCD DATA PORT
-	.EQU	LCD_DDR = DDRB	; LCD DATA DDR
-	.EQU	LCD_PIN = PINB	; LCD DATA PIN
+	.EQU	LCD_PRT = PORTB	; LCD data port
+	.EQU	LCD_DDR = DDRB	; LCD ddr
+	.EQU	LCD_PIN = PINB	; LCD data pin
 	.EQU	LCD_RS = 0		; LCD RS
 	.EQU	LCD_RW = 1		; LCD RW
 	.EQU	LCD_EN = 2		; LCD EN
@@ -124,9 +175,9 @@ LCD_CONFIG:
 ; LCD_INIT : Initializes the LCD periphrials
 ;---------------------------------------------------------
 LCD_INIT:
-	LDI		R21, 0xFF
-	OUT		LCD_DDR, R21		; LCD data port is output
-	OUT		LCD_DDR, R21		; LCD command port is output
+	LDI		R17, 0xFF
+	OUT		LCD_DDR, R17	; LCD data port is output
+	OUT		LCD_DDR, R17	; LCD command port is output
 
 	LDI		R16, 0x33		; init. LCD for 4-bit data
 	CALL	CMNDWRT			; call command function
@@ -137,7 +188,7 @@ LCD_INIT:
 	LDI		R16, 0x28		; init. LCD 2 lines, 5x7 matrix
 	CALL	CMNDWRT			; call command function
 	CALL	DELAY_2ms		; init. hold
-	LDI		R16, 0x0C		; display on, cursor on
+	LDI		R16, 0x0E		; display on, cursor on
 	CALL	CMNDWRT			; call command function
 	LDI		R16, 0x01		; clear LCD
 	CALL	CMNDWRT			; call command function
@@ -145,7 +196,9 @@ LCD_INIT:
 	LDI		R16, 0x06		; shift cursor right
 	CALL	CMNDWRT			; call command function
 
-	JMP MAIN	; setup complete wait for interrupt
+	LDI R18, 0				; set current state of shift to lower
+
+JMP MAIN	; setup complete wait for interrupt
 ;---------------------------------------------------------
 
 ;---------------------------------------------------------
@@ -241,4 +294,5 @@ LDR0:	CALL	DELAY_100us
 		BRNE	LDR0
 		POP		R17
 RET
+
 ;---------------------------------------------------------
