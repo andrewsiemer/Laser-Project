@@ -2,7 +2,7 @@
 ; LASERPROJECT.ASM
 ; DESCRIPTION : A project for Computer Systems
 ; AUTHOR : Andrew Siemer
-; VERSION : 2.11.20
+; VERSION : 2.14.20
 ;---------------------------------------------------------
 ; Registers:
 ; R16 - LCD buffer
@@ -23,11 +23,7 @@ data1:.DB 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 
 ; INT0ROUTINE : Action on button press
 ;---------------------------------------------------------
 INT0ROUTINE:
-	CLI						; clear interrupt
-	CALL	DELAY_2ms
-	CALL	DELAY_2ms
-	CALL	DELAY_2ms
-	CALL	DELAY_2ms		
+	CLI						; clear interrupt		
 	CALL	LOAD_KEYPAD		; load in keypad buffer
 	LDI		R17, 0xFF
 	CPSE	R16, R17		; check if button press was not a character
@@ -43,7 +39,7 @@ RJMP MAIN
 ; MAIN : Wait in loop when idle
 ;---------------------------------------------------------
 MAIN:
-	JMP		MAIN	; stay here
+	RJMP	MAIN	; stay here
 
 ;---------------------------------------------------------
 ; LOADZREGISTER1 : Load Z register with database values
@@ -80,7 +76,6 @@ LOAD_KEYPAD:
 	CALL	DELAY_2ms
 	CALL	DELAY_2ms
 	CALL	DELAY_2ms
-	CALL	DELAY_2ms
 	IN		R16, KPD_PIN	; read in buffer from keypad
 	ANDI	R16, 0x1F		; keypad buffer mask
 	CPI		R16, 0x12		; look for shift key
@@ -91,10 +86,6 @@ RET
 ; LOAD_BUFFER : Load new keypad value into buffer
 ;---------------------------------------------------------
 LOAD_BUFFER:
-	/*MOV		R31, R30
-	MOV		R30, R29
-	MOV		R29, R28
-	MOV		R28, R16*/
 	LDS		R17, LCD_BUF3	; load buffer value into R17
 	STS		LCD_BUF4, R17	; write R17 value to buffer memory
 	LDS		R17, LCD_BUF2	; load buffer value into R17
@@ -109,14 +100,6 @@ RET
 ;---------------------------------------------------------
 UPDATE_LCD:
 	CALL	CLEAR_LCD	
-	/*MOV		R16, R31
-	CALL	DATAWRT
-	MOV		R16, R30
-	CALL	DATAWRT
-	MOV		R16, R29
-	CALL	DATAWRT
-	MOV		R16, R28
-	CALL	DATAWRT*/
 	LDS		R16, LCD_BUF4	; load buffer value into R16
 	CALL	DATAWRT			; write R16 to LCD
 	LDS		R16, LCD_BUF3	; load buffer value into R16
@@ -181,7 +164,7 @@ INTERRUPT_CONFIG:
 	OUT		DDRD, R19	; set ddrd to 00000000 (all pins of portd are input pins, note you only need pins 2 and 3 for the interrupts)
 	LDI		R19, 0x0C	; preload binary 00001100 into R19
 	OUT		PORTD, R19	; set portd to 00001100 (portd pins 2 and 3 are internally hooked to pull up resistors)
-SEI						; set enable interrupts
+	SEI					; set enable interrupts
 
 ;---------------------------------------------------------
 ; KEYPAD_CONFIG : Establishes keypad variables
@@ -234,17 +217,14 @@ LCD_INIT:
 	LDI		R16, 0x06		; shift cursor right
 	CALL	CMNDWRT			; call command function
 	LDI		R18, 0			; set current state of shift to lower
-	/*LDI		R28, ' '
-	LDI		R29, ' '
-	LDI		R30, ' '
-	LDI		R31, ' '*/
 	LDI		R17, ' '
 	STS		LCD_BUF1, R17	; init. buffer with spaces
 	STS		LCD_BUF2, R17	; init. buffer with spaces
 	STS		LCD_BUF3, R17	; init. buffer with spaces
 	STS		LCD_BUF4, R17	; init. buffer with spaces
+	CALL	UPDATE_LCD
 
-JMP MAIN	; setup complete wait for interrupt
+RJMP MAIN	; setup complete wait for interrupt
 ;---------------------------------------------------------
 
 ;---------------------------------------------------------
