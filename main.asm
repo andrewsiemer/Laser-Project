@@ -2,13 +2,14 @@
 ; LASERPROJECT.ASM
 ; DESCRIPTION : A project for Computer Systems
 ; AUTHOR : Andrew Siemer
-; VERSION : 2.14.20
+; VERSION : 3.6.20
 ;---------------------------------------------------------
 ; Registers:
 ; R16 - LCD buffer
 ; R17 - general use
 ; R18 - shift flag
 ; R19 - general use
+; R20 - mode flag
 ;---------------------------------------------------------
 
 .org 0x00	; Write next command at 0x00 (Reset)
@@ -18,126 +19,6 @@ jmp INT0ROUTINE	; Call interrupt service routine for INT0
 
 .org 0x300	; go to 0x300 in program memory
 data1:.DB 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
-
-;---------------------------------------------------------
-; INT0ROUTINE : Action on button press
-;---------------------------------------------------------
-INT0ROUTINE:
-	CLI						; clear interrupt		
-	CALL	LOAD_KEYPAD		; load in keypad buffer
-	LDI		R17, 0xFF
-	CPSE	R16, R17		; check if button press was not a character
-	CALL	LOADZREGISTER1	; load Z Register with database value
-	CPSE	R16, R17		; check if button press was not a character
-	CALL	LOAD_BUFFER		; load LCD character buffer
-	CPSE	R16, R17		; check if button press was not a character
-	CALL	UPDATE_LCD		; write diplay buffer to LCD
-	SEI						; set enable interrupts
-RJMP MAIN
-
-;---------------------------------------------------------
-; MAIN : Wait in loop when idle
-;---------------------------------------------------------
-MAIN:
-	RJMP	MAIN	; stay here
-
-;---------------------------------------------------------
-; LOADZREGISTER1 : Load Z register with database values
-;---------------------------------------------------------
-LOADZREGISTER1:
-	LDI		ZL,	LOW(2*data1)
-	LDI		ZH,	HIGH(2*data1)
-	LDI		R21, 0
-	LDI		R22, 18
-	CPSE	R18, R21
-	ADD		R16, R22
-	ADD		ZL, R16
-	LPM		R16, Z
-RET
-
-;---------------------------------------------------------
-; LOAD_KEYPAD : Load R16 with keypad buffer
-;---------------------------------------------------------
-LOAD_KEYPAD:
-	LDI		R16, 0x00
-	OUT		KPD_DDR, R16	; set keypad port as output
-	CALL	DELAY_2ms
-	CALL	DELAY_2ms
-	CALL	DELAY_2ms
-	CALL	DELAY_2ms
-	CALL	DELAY_2ms
-	CALL	DELAY_2ms
-	CALL	DELAY_2ms
-	CALL	DELAY_2ms
-	CALL	DELAY_2ms
-	CALL	DELAY_2ms
-	CALL	DELAY_2ms
-	CALL	DELAY_2ms
-	CALL	DELAY_2ms
-	CALL	DELAY_2ms
-	CALL	DELAY_2ms
-	IN		R16, KPD_PIN	; read in buffer from keypad
-	ANDI	R16, 0x1F		; keypad buffer mask
-	CPI		R16, 0x12		; look for shift key
-	BREQ	Shift
-RET
-
-;---------------------------------------------------------
-; LOAD_BUFFER : Load new keypad value into buffer
-;---------------------------------------------------------
-LOAD_BUFFER:
-	LDS		R17, LCD_BUF3	; load buffer value into R17
-	STS		LCD_BUF4, R17	; write R17 value to buffer memory
-	LDS		R17, LCD_BUF2	; load buffer value into R17
-	STS		LCD_BUF3, R17	; write R17 value to buffer memory
-	LDS		R17, LCD_BUF1	; load buffer value into R17
-	STS		LCD_BUF2, R17	; write R17 value to buffer memory
-	STS		LCD_BUF1, R16	; write R17 value to buffer memory
-RET
-
-;---------------------------------------------------------
-; UPDATE_LCD : Updates LCD with new char buffer
-;---------------------------------------------------------
-UPDATE_LCD:
-	CALL	CLEAR_LCD	
-	LDS		R16, LCD_BUF4	; load buffer value into R16
-	CALL	DATAWRT			; write R16 to LCD
-	LDS		R16, LCD_BUF3	; load buffer value into R16
-	CALL	DATAWRT			; write R16 to LCD
-	LDS		R16, LCD_BUF2	; load buffer value into R16
-	CALL	DATAWRT			; write R16 to LCD
-	LDS		R16, LCD_BUF1	; load buffer value into R16
-	CALL	DATAWRT			; write R16 to LCD
-RET
-
-;---------------------------------------------------------
-; SHIFT : Toggle uppercase/lowercase
-;---------------------------------------------------------
-Shift:
-	CPI		R18, 1		; compare shift flag
-	BREQ	LOWERCASE	; if uppercase call lowercase
-	BRNE	UPPERCASE	; if lowercase call uppercase
-RET
-
-;---------------------------------------------------------
-; LOWERCASE : Toggle on lowercase
-;---------------------------------------------------------
-LOWERCASE:
-	LDI		R16, 0x0E	; set LCD cursor to not blinking
-	CALL	CMNDWRT		; write command to LCD
-	LDI		R18, 0		; set shift flag = 0
-	LDI		R16, 0xFF	; fill R16 with 1 for LCD ignore
-RET
-
-;---------------------------------------------------------
-; LOWERCASE : Toggle on uppercase
-;---------------------------------------------------------
-UPPERCASE:
-	LDI		R16, 0x0F	; set LCD cursor to blinking
-	CALL	CMNDWRT		; write command to LCD
-	LDI		R18, 1		; set shift flag = 1
-	LDI		R16, 0xFF	; fill R16 with 1 for LCD ignore
-RET
 
 ;---------------------------------------------------------
 START:	; start of program
@@ -193,6 +74,12 @@ LCD_CONFIG:
 	.EQU	LCD_BUF4 = 0x224	; LCD char buffer 1
 
 ;---------------------------------------------------------
+; KEYPAD_INIT : Initializes the keypad periphrials
+;---------------------------------------------------------
+KEYPAD_INIT:
+	LDI		R20, '0'	; set mode flag to 0
+
+;---------------------------------------------------------
 ; LCD_INIT : Initializes the LCD periphrials
 ;---------------------------------------------------------
 LCD_INIT:
@@ -201,45 +88,225 @@ LCD_INIT:
 	OUT		LCD_DDR, R17	; LCD command port is output
 
 	LDI		R16, 0x33		; init. LCD for 4-bit data
-	CALL	CMNDWRT			; call command function
+	CALL	LCD_CMD			; call command function
 	CALL	DELAY_2ms		; init. hold
 	LDI		R16, 0x32		; init. LCD for 4-bit data
-	CALL	CMNDWRT			; call command function
+	CALL	LCD_CMD			; call command function
 	CALL	DELAY_2ms		; init. hold
 	LDI		R16, 0x28		; init. LCD 2 lines, 5x7 matrix
-	CALL	CMNDWRT			; call command function
+	CALL	LCD_CMD			; call command function
 	CALL	DELAY_2ms		; init. hold
 	LDI		R16, 0x0E		; display on, cursor on
-	CALL	CMNDWRT			; call command function
+	CALL	LCD_CMD			; call command function
 	LDI		R16, 0x01		; clear LCD
-	CALL	CMNDWRT			; call command function
+	CALL	LCD_CMD			; call command function
 	CALL	DELAY_2ms		; delay 2 ms for clear LCD
 	LDI		R16, 0x06		; shift cursor right
-	CALL	CMNDWRT			; call command function
+	CALL	LCD_CMD			; call command function
 	LDI		R18, 0			; set current state of shift to lower
 	LDI		R17, ' '
 	STS		LCD_BUF1, R17	; init. buffer with spaces
 	STS		LCD_BUF2, R17	; init. buffer with spaces
 	STS		LCD_BUF3, R17	; init. buffer with spaces
 	STS		LCD_BUF4, R17	; init. buffer with spaces
-	CALL	UPDATE_LCD
+	CALL	LCD_UPDATE
 
 RJMP MAIN	; setup complete wait for interrupt
 ;---------------------------------------------------------
 
 ;---------------------------------------------------------
-; CLEAR_LCD : Clear LCD Screen
+; MAIN : Wait in loop when idle
 ;---------------------------------------------------------
-CLEAR_LCD:
+MAIN:
+	RJMP	MAIN	; stay here
+
+;---------------------------------------------------------
+; INT0ROUTINE : Action on button press
+;---------------------------------------------------------
+INT0ROUTINE:
+	CLI						; clear interrupt		
+	CALL	KEYPAD_LOAD		; load in keypad buffer
+	CPI		R16, 0x12		; look for shift key
+	BREQ	SHIFT_JMP
+	CPI		R16, 0x13		; look for mode key
+	BREQ	MODE_JMP
+	CALL	LOADZREGISTER1	; load Z Register with database value
+	CALL	KEYBUFF_LOAD		; load LCD character buffer
+	CALL	LCD_UPDATE		; write diplay buffer to LCD
+	SEI						; set enable interrupts
+RETI
+
+;---------------------------------------------------------
+; INT_BREAK: Skipping to return from inturrupt
+;---------------------------------------------------------
+INT_BREAK:
+	CLR R16
+	SEI			; set enable interrupts
+RETI
+
+;---------------------------------------------------------
+; LOADZREGISTER1 : Load Z register with database values
+;---------------------------------------------------------
+LOADZREGISTER1:
+	LDI		ZL,	LOW(2*data1)
+	LDI		ZH,	HIGH(2*data1)
+	LDI		R21, 0
+	LDI		R22, 18
+	CPSE	R18, R21
+	ADD		R16, R22
+	ADD		ZL, R16
+	LPM		R16, Z
+RET
+
+;---------------------------------------------------------
+; KEYPAD_LOAD : Load R16 with keypad buffer
+;---------------------------------------------------------
+KEYPAD_LOAD:
+	LDI		R16, 0x00
+	OUT		KPD_DDR, R16	; set keypad port as output
+	
+	LDI		R17, 10
+	LOOP:
+		CALL	DELAY_2ms
+		DEC		R17
+	BRNE	LOOP
+
+	IN		R16, KPD_PIN	; read in buffer from keypad
+	ANDI	R16, 0x1F		; keypad buffer mask
+RET
+
+;---------------------------------------------------------
+; SHIFT_JMP : JMP to SHIFT since its outside of relative range
+;---------------------------------------------------------
+SHIFT_JMP:
+	JMP SHIFT
+
+;---------------------------------------------------------
+;  MODE_JMP : JMP to MODE since its outside of relative range
+;---------------------------------------------------------
+MODE_JMP:
+	JMP MODE
+
+;---------------------------------------------------------
+; KEYBUFF_LOAD : Load new keypad value into buffer
+;---------------------------------------------------------
+KEYBUFF_LOAD:
+	LDS		R17, LCD_BUF3	; load buffer value into R17
+	STS		LCD_BUF4, R17	; write R17 value to buffer memory
+	LDS		R17, LCD_BUF2	; load buffer value into R17
+	STS		LCD_BUF3, R17	; write R17 value to buffer memory
+	LDS		R17, LCD_BUF1	; load buffer value into R17
+	STS		LCD_BUF2, R17	; write R17 value to buffer memory
+	STS		LCD_BUF1, R16	; write R17 value to buffer memory
+RET
+
+;---------------------------------------------------------
+; LCD_UPDATE : Updates LCD with new char buffer
+;---------------------------------------------------------
+LCD_UPDATE:
+	CALL	LCD_CLR	
+
+	LDI		R16, 'M'
+	CALL	LCD_WRT			; write R16 to LCD
+	LDI		R16, 'o'
+	CALL	LCD_WRT			; write R16 to LCD
+	LDI		R16, 'd'
+	CALL	LCD_WRT			; write R16 to LCD
+	LDI		R16, 'e'
+	CALL	LCD_WRT			; write R16 to LCD
+	LDI		R16, ':'
+	CALL	LCD_WRT			; write R16 to LCD
+	LDI		R16, ' '
+	CALL	LCD_WRT			; write R16 to LCD
+	MOV		R16, R20
+	CALL	LCD_WRT			; write R16 to LCD
+
+	LDI		R16, 0x14		; shift cursor right
+
+	LDI		R17, 10
+	MOVE_CURSOR:
+		CALL	LCD_CMD
+		DEC		R17
+	BRNE	MOVE_CURSOR
+
+	LDS		R16, LCD_BUF4	; load buffer value into R16
+	CALL	LCD_WRT			; write R16 to LCD
+	LDS		R16, LCD_BUF3	; load buffer value into R16
+	CALL	LCD_WRT			; write R16 to LCD
+	LDS		R16, LCD_BUF2	; load buffer value into R16
+	CALL	LCD_WRT			; write R16 to LCD
+	LDS		R16, LCD_BUF1	; load buffer value into R16
+	CALL	LCD_WRT			; write R16 to LCD
+RET
+
+;---------------------------------------------------------
+; SHIFT : Toggle uppercase/lowercase
+;---------------------------------------------------------
+Shift:
+	CPI		R18, 1		; compare shift flag
+	BREQ	LOWERCASE	; if uppercase call lowercase
+	BRNE	UPPERCASE	; if lowercase call uppercase
+
+;---------------------------------------------------------
+; LOWERCASE : Toggle on lowercase
+;---------------------------------------------------------
+LOWERCASE:
+	LDI		R16, 0x0E	; set LCD cursor to not blinking
+	CALL	LCD_CMD		; write command to LCD
+	LDI		R18, 0		; set shift flag = 0
+	RJMP	INT_BREAK
+
+;---------------------------------------------------------
+; LOWERCASE : Toggle on uppercase
+;---------------------------------------------------------
+UPPERCASE:
+	LDI		R16, 0x0F	; set LCD cursor to blinking
+	CALL	LCD_CMD		; write command to LCD
+	LDI		R18, 1		; set shift flag = 1
+	RJMP	INT_BREAK
+
+;---------------------------------------------------------
+; MODE : Toggle mode state
+;---------------------------------------------------------
+MODE:
+	CPI		R20, '0'
+	BREQ	MODE_1
+	CPI		R20, '1'
+	BREQ	MODE_2
+	CPI		R20, '2'
+	BREQ	MODE_3
+	CPI		R20, '3'
+	BREQ	MODE_0
+	MODE_0:
+		LDI		R20, '0'
+		SEI	
+		RJMP	INT_BREAK
+	MODE_1:
+		LDI		R20, '1'
+		SEI	
+		RJMP	INT_BREAK
+	MODE_2:
+		LDI		R20, '2'
+		SEI	
+		RJMP	INT_BREAK
+	MODE_3:
+		LDI		R20, '3'
+		SEI	
+		RJMP	INT_BREAK	
+
+;---------------------------------------------------------
+; LCD_CLR : Clear LCD Screen
+;---------------------------------------------------------
+LCD_CLR:
 	LDI		R16, 0x01	; LCD clear command
-	CALL	CMnDWRT		; LCD command write
+	CALL	LCD_CMD		; LCD command write
 	CALL	DELAY_2ms
 RET
 
 ;---------------------------------------------------------
-; CMnDWRT : Write data in R16 to LCD as command
+; LCD_CMD : Write data in R16 to LCD as command
 ;---------------------------------------------------------
-CMnDWRT:
+LCD_CMD:
 	MOV		R27, R16
 	ANDI	R27, 0xF0
 	IN		R26, LCD_PRT
@@ -269,9 +336,9 @@ CMnDWRT:
 RET
 
 ;---------------------------------------------------------
-; DATAWRT : Write data in R16 to LCD
+; LCD_WRT : Write data in R16 to LCD
 ;---------------------------------------------------------
-DATAWRT:
+LCD_WRT:
 	MOV		R27, R16
 	ANDI	R27, 0xF0
 	IN		R26, LCD_PRT
