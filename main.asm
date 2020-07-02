@@ -33,9 +33,9 @@ STACK_CONFIG:
 	OUT		SPL, R17
 
 ;---------------------------------------------------------
-; INTERRUPT_CONFIG : Establishes interrupt variables
+; INT_CONFIG : Establishes interrupt variables
 ;---------------------------------------------------------
-INTERRUPT_CONFIG:
+INT_CONFIG:
 	LDI		R19, 0x0A	; preload binary 00001010 into R19
 	LDI		R17, 0x00
 	STS		EICRA, R19	; set eicra to 00001010 (both interrupts trigger on active low)
@@ -69,9 +69,9 @@ LCD_CONFIG:
 	.EQU	LCD_RW = 1		; LCD RW
 	.EQU	LCD_EN = 2		; LCD EN
 	.EQU	LCD_BUF1 = 0x200	; LCD char buffer 1
-	.EQU	LCD_BUF2 = 0x208	; LCD char buffer 1
-	.EQU	LCD_BUF3 = 0x216	; LCD char buffer 1
-	.EQU	LCD_BUF4 = 0x224	; LCD char buffer 1
+	.EQU	LCD_BUF2 = 0x208	; LCD char buffer 2
+	.EQU	LCD_BUF3 = 0x210	; LCD char buffer 3
+	.EQU	LCD_BUF4 = 0x218	; LCD char buffer 4
 
 ;---------------------------------------------------------
 ; KEYPAD_INIT : Initializes the keypad periphrials
@@ -131,17 +131,10 @@ INT0ROUTINE:
 	CPI		R16, 0x13		; look for mode key
 	BREQ	MODE_JMP
 	CALL	LOADZREGISTER1	; load Z Register with database value
-	CALL	KEYBUFF_LOAD		; load LCD character buffer
+	CALL	KEYBUFF_LOAD	; load LCD character buffer
+	INT_BREAK:
 	CALL	LCD_UPDATE		; write diplay buffer to LCD
 	SEI						; set enable interrupts
-RETI
-
-;---------------------------------------------------------
-; INT_BREAK: Skipping to return from inturrupt
-;---------------------------------------------------------
-INT_BREAK:
-	CLR R16
-	SEI			; set enable interrupts
 RETI
 
 ;---------------------------------------------------------
@@ -277,21 +270,19 @@ MODE:
 	BREQ	MODE_3
 	CPI		R20, '3'
 	BREQ	MODE_0
+
 	MODE_0:
 		LDI		R20, '0'
-		SEI	
 		RJMP	INT_BREAK
 	MODE_1:
 		LDI		R20, '1'
-		SEI	
 		RJMP	INT_BREAK
 	MODE_2:
 		LDI		R20, '2'
-		SEI	
+		CALL	LASER_WRT
 		RJMP	INT_BREAK
 	MODE_3:
 		LDI		R20, '3'
-		SEI	
 		RJMP	INT_BREAK	
 
 ;---------------------------------------------------------
@@ -398,3 +389,60 @@ LDR0:	CALL	DELAY_100us
 RET
 
 ;---------------------------------------------------------
+
+LASER_WRT:
+		LDI R21, 0xFF
+		OUT DDRC, R21
+		LDI R21, 0x00		;Initialization, Port is set to all 0's
+		OUT PortC, R21
+		LDI R21, 0xFF		;Set PortB as output
+		OUT DDRB, R21
+		LDI R21, 0b00000011 ;Set X and Y -Buffer
+		OUT PortC, R21
+		LDI R21, 0x00		;Clear X and Y -Buffer
+		OUT PortB, R21
+		LDI R21, 0b00000000	;Finish setting X and Y
+		OUT PortC, R21
+	LOP:	
+		LDI R16, 0x00
+		CALL XBUFF_SET
+		CALL LASER_UPDATE
+		LDI R16, 0x00
+		CALL YBUFF_SET
+		CALL LASER_UPDATE
+
+		CALL DELAY_100us
+		CALL DELAY_100us
+		CALL DELAY_100us
+		CALL DELAY_100us
+
+		LDI R16, 0x00
+		CALL XBUFF_SET
+		CALL LASER_UPDATE
+		LDI R16, 0xFF
+		CALL YBUFF_SET
+		CALL LASER_UPDATE
+
+		CALL DELAY_100us
+		CALL DELAY_100us
+		CALL DELAY_100us
+		CALL DELAY_100us
+	RJMP LOP
+
+	XBUFF_SET:
+		LDI R21, 0b00000001
+		OUT PortC, R21
+		CALL DELAY_100us
+	RET
+	
+	YBUFF_SET:
+		LDI R21, 0b00000010
+		OUT PortC, R21
+		CALL DELAY_100us
+	RET
+	
+	LASER_UPDATE:					;Sets the position of the one of the buffers
+		OUT PortB, R16
+		CALL DELAY_100us
+		CALL DELAY_100us
+	RET
